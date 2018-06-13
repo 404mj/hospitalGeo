@@ -54,7 +54,7 @@ public class GeoworkLeader {
         Workbook hssfWb = null;
         try {
             //_0525
-            inputStream = new FileInputStream("/Users/zsx/Documents/波立维已进药社区名单_0525.xls");
+            inputStream = new FileInputStream("/Users/zsx/Documents/docsOfHospitalGeo/波立维已进药社区名单_0525.xls");
             hssfWb = new HSSFWorkbook(inputStream);
             HSSFSheet sheet = (HSSFSheet) hssfWb.getSheetAt(0);
             Iterator<Row> rowIterator = sheet.rowIterator();
@@ -67,10 +67,9 @@ public class GeoworkLeader {
                 // 每十行数据一组，提交给线程池
                 if (count == 10) {
                     //控制并发量，CKQPS_HAS_EXCEEDED_THE_LIMIT
-                    Long delay = (new Random().nextInt(5)) * 10L;
-                    Thread.sleep(delay);
+                    TimeUnit.MILLISECONDS.sleep(new Random().nextInt(6) * 10);
                     GeoWork task = new GeoWork(latch, excelRows);
-                    logger.info("add task: " + excelRows.toString());
+                    logger.info("ADD TASK: " + excelRows.toString());
                     pool.execute(task);
                     excelRows = null;
                     count = 0;
@@ -127,6 +126,6 @@ public class GeoworkLeader {
                 "ZDLK;吉林省长春市绿园区未知经销商;NULL", "ZGCX;安徽省合肥市包河区未知经销商;NULL", "ZZFM;江苏省苏州市姑苏区未知经销商;NULL", "ZTAP;新疆维吾尔自治区阿勒泰地区富蕴县未知经销商;NULL"};
         List<String> infoList = Arrays.asList(infoArr);
         DbTool db = new DbTool();
-        System.out.println(db.insertBatch(infoList));
+        //System.out.println(db.insertBatch(infoList));
     }
 }

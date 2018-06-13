@@ -8,6 +8,7 @@ import com.alihealth.util.GeoRequester;
 import com.alihealth.util.JsonObjectInfo;
 
 import javax.naming.Name;
+import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -66,8 +67,8 @@ public class GeoWork implements Runnable {
         int i = 0;
         for (String row : excelRows) {
             String name = row.split(";")[1];
-            //不处理未知经销商的数据。
-            if (name != null && !name.endsWith("未知经销商")) {
+            //只处理包含信息的数据。
+            if (name != null && isDescMeaningful(name)) {
                 if (i > 0) {
                     buffer.append("|");
                 }
@@ -83,9 +84,9 @@ public class GeoWork implements Runnable {
             JSONObject jsonObj = JSONObject.parseObject(json);
 
             if (!jsonUtil.isSuccess(jsonObj)) {
-                logger.warning("response error REQUEST: " + req.toString());
-                logger.warning("excelRows : " + excelRows.toString());
-                logger.warning("ERR INFO: " + json);
+                logger.warning("RESPONSE ERROR REQUEST: " + req.toString());
+                logger.warning("EXCEL ROWS : " + excelRows.toString());
+                logger.warning("RESPONSE ERROR INFO: " + json);
                 latch.countDown();
                 return;
             }
@@ -99,61 +100,63 @@ public class GeoWork implements Runnable {
         int j = 0;
         List<String> insertRows = new ArrayList<>(10);
         for (String row : excelRows) {
-            String name = row.split(";")[1];
+            String desc = row.split(";")[1];
 
-            if (!name.endsWith("未知经销商") && locations != null && formatNames != null && j < locations.length) {
+            if (isDescMeaningful(desc) && locations != null && formatNames != null && j < locations.length) {
                 // 请求了接口的有效地址
-                row += matchProcess(name, locations[j], formatNames[j]);
+                row += matchProcess(desc, locations[j], formatNames[j]);
                 j++;
             } else {
                 row += EMPTY_COMBINATION;
             }
             insertRows.add(row);
         }
-        logger.info("DEBUG    insertRows:" + insertRows.toString());
+        logger.info("DEBUG INSERT ROWS:" + insertRows.toString());
+
         if (!db.insertBatch(insertRows)) {
-            logger.warning("insert batch error!");
+            logger.warning("INSERT BATCH ERROR!");
         }
         latch.countDown();
-        logger.finer(Thread.currentThread().getName() + "work fine and done");
+        logger.info(Thread.currentThread().getName() + "work fine and done");
     }
 
     /**
      * 处理高德接口返回的经纬度信息和格式化名称，
      * 做一些匹配度的验证和优化
      *
+     * @param desc       原始文件中的描述名称
      * @param location   [] || ***
-     * @param formatName [] || ***
+     * @param formatName [] || ***  请求响应中匹配的名称
      * @return ";接口响应的格式化名称;经纬度信息"
      */
-    private String matchProcess(String name, String location, String formatName) {
-        boolean noMatch = false;
+    private String matchProcess(String desc, String location, String formatName) {
+        boolean match = false;
 
-        if (location.equals(EMPTY_LIST)) {
-            //没有查到数据
-            noMatch = true;
-        } else {
+        if (!location.equals(EMPTY_LIST)) {
             //查到数据，粗略匹配判断
             for (String e : DICT) {
                 if (formatName.contains(e)) {
-                    noMatch = false;
+                    match = true;
                     break;
                 }
             }
         }
 
         //如果粗略不匹配||没查到信息调搜索接口处理 => 使用搜索接口按照地址查询 => formatname也变成地址/name了
-        if (noMatch) {
-            JSONObject bestPoi = searchAddress(name);
+        if (!match) {
+            JSONObject bestPoi = searchAddress(desc);
             if (bestPoi != null) {
-                String newName = bestPoi.getString("name");
+                String newDesc = bestPoi.getString("name");
                 String newLocation = bestPoi.getString("location");
-                newName = (newName.length() > 0 && newName.equals(EMPTY_LIST)) ? DEFAULT_EMPTY : newName;
+                newDesc = (newDesc.length() > 0 && newDesc.equals(EMPTY_LIST)) ? DEFAULT_EMPTY : newDesc;
                 newLocation = (newLocation.length() > 0 && newLocation.equals(EMPTY_LIST)) ? DEFAULT_EMPTY : newLocation;
-                return ";" + newName + ";" + newLocation;
+                return ";" + newDesc + ";" + newLocation;
+            } else {
+                logger.warning("EMPTY SEARCH: " + desc + "--" + location + "--" + formatName);
             }
         }
-        return EMPTY_COMBINATION;
+        //匹配 || 不匹配但是搜索失败
+        return ";" + formatName + ";" + location;
     }
 
     /**
@@ -180,16 +183,46 @@ public class GeoWork implements Runnable {
         req.put("extensions", "base");
         req.put("keywords", name);
 
+        // {"status":"0","info":"CKQPS_HAS_EXCEEDED_THE_LIMIT","infocode":"10020"}
+        try {
+            TimeUnit.MILLISECONDS.sleep(new Random().nextInt(9) * 10L);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
         String resjson = requester.sendGet(SEARCH_URL, req, null);
         JSONObject jsonObj = JSONObject.parseObject(resjson);
         JsonObjectInfo jsonUtil = new JsonObjectInfo();
         if (!jsonUtil.isSuccess(jsonObj)) {
-            logger.warning("response error REQUEST: " + req.toString());
+            logger.warning("RESPONSE ERROR REQUEST: " + req.toString());
             logger.warning("SEARCH ERR INFO: " + resjson);
             return null;
         }
 
         JSONArray pois = jsonObj.getJSONArray("pois");
+
+        if (pois.size() == 0) {
+            return null;
+        }
         return (JSONObject) pois.get(0);//默认第一个是最匹配的！
+    }
+
+    /**
+     * 判断机构名称描述是否包含有意义信息
+     *
+     * @param desc
+     * @return
+     */
+    private boolean isDescMeaningful(String desc) {
+        boolean flag = true;
+
+        if (desc.endsWith("未知经销商")) {
+            flag = false;
+        }
+
+        if (desc.endsWith("其他")) {
+            flag = false;
+        }
+
+        return flag;
     }
 }

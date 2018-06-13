@@ -53,7 +53,7 @@ public class GeoRequester {
         StringBuffer response = new StringBuffer();
         HttpURLConnection urlConnection = null;
 
-        logger.info("DEBUG:: 参数: " + requestParam.toString());
+        logger.info("DEBUG:: REQUEST参数: " + requestParam.toString());
 
         //默认处理高德信息
         if (url == null) {
@@ -120,7 +120,7 @@ public class GeoRequester {
                 response.append(line);
             }
         } catch (Exception e) {
-            logger.warning("send request error!");
+            logger.warning("SEND REQUEST ERROR!");
             throw new RuntimeException("http rerquest error");
         } finally {
             try {

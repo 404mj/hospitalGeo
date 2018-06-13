@@ -98,45 +98,39 @@ public class DbTool {
         }
 
         Statement statement = null;
+
+        StringBuffer sbuf = new StringBuffer("insert into hospitalgeo (hosp_code, hosp_desc, format_address, geoinfo) values ");
+        //组装批量插入sql
+        for (int i = 0; i < rows.size(); ++i) {
+            String[] cols = rows.get(i).split(";");
+            if (cols.length == 4) {
+                //不接受非空的字段值，如果为空，设置空值
+                sbuf.append(Arrays.stream(cols).collect(Collectors.joining("','", "('", "')")));
+            } else {
+                logger.warning("传入参数有误：" + rows.get(i));
+            }
+
+            //最后一个元素不加后缀了
+            if (i != rows.size() - 1) {
+                sbuf.append(", ");
+            }
+        }
+        String sql = sbuf.append(";").toString();
+        logger.info("EXECTE SQL: " + sql);
+        //组装完成
+
         try {
             statement = connection.createStatement();
-            StringBuffer sbuf = new StringBuffer("insert into hospitalgeo (hosp_code, hosp_desc, format_address, geoinfo) values ");
-            //组装批量插入sql
-            for (int i = 0; i < rows.size(); ++i) {
-                String[] cols = rows.get(i).split(";");
-                if (cols.length == 4) {
-                    //不接受非空的字段值，如果为空，设置空值
-                    sbuf.append(Arrays.stream(cols).collect(Collectors.joining("','", "('", "')")));
-                } else {
-                    logger.warning("传入参数有误：" + rows.get(i));
-                }
-
-                //最后一个元素不加后缀了
-                if (i != rows.size() - 1) {
-                    sbuf.append(", ");
-                }
-            }
-            String sql = sbuf.append(";").toString();
-            logger.info(sql);
-            //组装完成
-
             int affected = statement.executeUpdate(sql);
             if (affected != rows.size()) {
-                throw new SQLException("execute err");
-            } else {
-                return true;
+                return false;
             }
         } catch (SQLException e) {
             e.printStackTrace();
         } finally {
-            try {
-                statement.close();
-                return false;
-            } catch (SQLException e) {
-                e.printStackTrace();
-            }
+            close(null, statement);
         }
-        return false;
+        return true;
     }
 
     private void close(Connection conn, Statement stat) {
